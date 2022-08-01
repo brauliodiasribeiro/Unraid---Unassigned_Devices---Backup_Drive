@@ -1,6 +1,6 @@
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/donate?business=QVR5JEKFBASVW&no_recurring=0&currency_code=USD)
 # INCREMENTAL OR SYNC BACKUP TO DRIVE (GOOGLE, MICROSOFT, ETC) - by bdrtec
-	This script make incremental or sync backup to a folder.
+	This script make incremental or sync backup to a drive.
 
 	It's possible to schedule how often and what type of the backup will be done.
 
