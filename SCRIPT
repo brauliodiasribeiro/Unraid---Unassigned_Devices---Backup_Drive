@@ -1,0 +1,259 @@
+#!/bin/bash
+#PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+arrayStarted=true
+
+# INCREMENTAL OR SYNC BACKUP TO UNRAID UNASSIGNED DEVICES -----------
+# LINK: https://github.com/bdrtec/Unraid-Bkp-Drive-bdrtec
+# AUTHOR: BRAULIO RIBEIRO
+# -------------------------------------------------------------------
+
+# CHANGE THIS VARIABLES ---------------------------------------------
+St_On_Off=1
+ 		# TURN THE SCRIPT ON OR OFF. 0 disable backup, 1 enable backup. If set "0" nothing will be modified (copied or deleted)!
+
+Script_Name="bkp_drive"
+ 		# Script name. Created in "CA user scripts" (Unraid -> Settings -> User Scripts -> "Script_Name"). A copy will be made in the folder "Script_Dir" (Script_Dir/Script_Name). Type between "" without / begin and end
+
+Script_Dir="/mnt/user/Scripts"
+		# Path to backup scripts. Type between "" without / begin and end
+
+Day_Sync=0
+		# Incremental backup: the frequency is scheduled in "CA User Scripts -> Schedule Disabled"
+ 		# Sync backup: 0 disable, x enable. "Day_Sync" is how often the script will sync (mirroring) backup
+
+Send_Email1="test1@gmail.com"
+#Send_Email2="test1@gmail.com"
+#Send_Email_TI="test3@gmail.com"
+
+Drive_Name=(
+	"gdrive-drive01"
+	"gdrive-drive02"
+	"gdrive-drive03"
+)
+    # Drive name: ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02], [gdrive-drive03]
+# END CHANGE THIS VARIABLES -----------------------------------------
+
+# TRANSLATE THIS VARIABLES TO YOUR LANGUAGE -------------------------
+# Translate to your preferred language (English, Portuguese, German, Russian, Italian, Spanish, etc)
+Msg_Mail_Subject="Backup: ${Drive_Name[$i]}"
+Msg_Device="Drive"
+Msg_Date="Date"
+
+Msg_Bkp_Type_Incr="Type = Incremental"
+Msg_Bkp_Type_Sync="Type = Synchronized"
+
+Msg_Bkp_Start="Status: Backup initialized. You'll receive an email when finish"
+Msg_Bkp_Finish="Status: Backup performed successfully"
+
+Msg_Unmount="Status: Error finishing backup. The device hasn't been unmounted"
+Msg_Error="Status: Backup configured incorrectly"
+Msg_Alert1="Contact the TI team"
+# END TRANSLATE THIS VARIABLES TO YOUR LANGUAGE ---------------------
+
+# INCREMENTAL AND SYNC BACKUP ---------------------------------------
+Func-Incr-Sync() {
+	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	echo "${Msg_Bkp_Start}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	Func-Send-Email
+	Func-Log
+	
+	# Read the file with the date of the last backup in the YYYY-MM-DD format
+	Log_Last_Sync_Bkp=$(sed '$q' "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt")
+	
+	# Test if the file exists or is empty
+	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" ] || [ -z "${Log_Last_Sync_Bkp}" ]; then
+		# Save the date of the last backup (today) in the YYYY-MM-DD format
+		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt"
+	fi
+	
+	if [ -n "${Day_Sync}" ] && [ "${Day_Sync}" -ne 0 ]; then
+		# Difference in days. The calculation is in seconds (Today_Date - Log_Last_Sync_Bkp)
+		let Dif_Date=($(date +%s -d ${Today_Date})-$(date +%s -d ${Log_Last_Sync_Bkp}))/86400
+		
+		# Test if the current date is the backup scheduled date
+		if [ "${Dif_Date}" -ge "${Day_Sync}" ]; then
+			St_Sync_Bkp=1
+		fi
+	fi
+}
+# END INCREMENTAL AND SYNC BACKUP -----------------------------------
+
+# FUNCTION RSYNC ----------------------------------------------------
+Func-Rsync() {
+	Rsync_Config=("-avih" "--stats")
+	
+	if [ -n "${St_Sync_Bkp}" ] && [ "${St_Sync_Bkp}" -eq "1" ]; then
+		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt"
+		echo "${Msg_Bkp_Type_Sync}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+		Rsync_Config+=("--delete")
+	else
+		echo "${Msg_Bkp_Type_Incr}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	fi
+	
+	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	echo "${Msg_Bkp_Finish_On}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	Rsync_Config+=("--include-from=${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "--exclude=*" "/mnt/user/" "${Drive_Mount}/${Drive_Name[$i]}")
+	rsync "${Rsync_Config[@]}"
+}
+# END FUNCTION RSYNC ------------------------------------------------
+
+# FUNCTION MOUNT ----------------------------------------------------
+Func-Mount() {
+	# Check if drive unmounted
+	# Check if directory exists and is empty
+	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
+		rclone mount --max-read-ahead 1024k --allow-other "${Drive_Name[$i]}": "${Drive_Mount}/${Drive_Name[$i]}" &
+	fi
+}
+# END FUNCTION MOUNT ------------------------------------------------
+
+# FUNCTION UNMOUNT --------------------------------------------------
+Func-Unmount() {
+	fusermount -uz "${Drive_Mount}/${Drive_Name[$i]}"
+	
+	# Check if directory exists and is empty
+	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
+		rm -R "${Drive_Mount}/${Drive_Name[$i]}"
+	fi
+	
+	# Check if directory exists and is empty
+	if ([ -d "${Drive_Mount}" ] && [ ! "$(ls -A "${Drive_Mount}")" ]); then
+		rm -R "${Drive_Mount}"
+	fi
+	
+	# Check if drive mounted (directory exists and isn´t empty)
+	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
+		Func-Error "${Msg_Unmount}" "${Msg_Alert1}"
+	fi
+	
+	Func-Send-Email
+}
+# END FUNCTION UNMOUNT ----------------------------------------------
+
+# FUNCTION SEND EMAIL ----------------------------------------------
+Func-Send-Email() {
+	if [ -n "${Send_Email1}" ]; then
+		sendmail "${Send_Email1}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	fi
+	
+	if [ -n "${Send_Email2}" ]; then
+		sendmail "${Send_Email2}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	fi
+	
+	if [ -n "${Send_Email_TI}" ]; then
+		sendmail "${Send_Email_TI}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	fi
+}
+# END FUNCTION SEND EMAIL ------------------------------------------
+
+# FUNCTION ERROR ----------------------------------------------------
+Func-Error() {	
+cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+"${1}"
+"${2}"
+"${3}"
+EOF
+}
+# END FUNCTION ERROR ------------------------------------------------
+
+# FUNCTION LOG ------------------------------------------------------
+Func-Log() {
+	Today_Date=$(date +%Y-%m-%d)
+	
+cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+From: "${Send_Email1}"
+To: "${Send_Email1}"
+Cc: "${Send_Email2}"
+Cco: "${Send_Email_TI}"
+Subject: "${Msg_Mail_Subject}"
+"${Msg_Device}" = "${Drive_Name[$i]}"
+"${Msg_Date}" = "${Today_Date}"
+EOF
+}
+# END FUNCTION LOG --------------------------------------------------
+
+# FUNCTION CREATE SCRIPT --------------------------------------------
+Func-Create-Script() {
+	Drive_Mount="/mnt/disks/Drive"
+	Src_Flash="/boot/config/plugins/user.scripts/scripts"
+	
+	if [ ! -d "${Script_Dir}/${Script_Name}" ]; then
+		mkdir "${Script_Dir}/${Script_Name}"
+	fi
+	
+	if [ ! -d "${Drive_Mount}" ]; then
+		mkdir "${Drive_Mount}"
+	fi
+	
+	
+	if [ ! -d "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}" ]; then
+		mkdir "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}"
+	fi
+	
+	if [ ! -d "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}" ]; then
+		mkdir "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}"
+	fi
+	
+	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
+		touch "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt"
+	fi
+	
+	if [ ! -d "${Drive_Mount}/${Drive_Name[$i]}" ]; then
+		mkdir "${Drive_Mount}/${Drive_Name[$i]}"
+	fi
+}
+# END FUNCTION CREATE SCRIPT ----------------------------------------
+
+# FUNCTION SYNC SCRIPT ----------------------------------------------
+Func-Sync-Script() {
+	if [ -d "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}" ]; then
+		# Copy "LOG-BKP.txt"
+		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		fi
+		
+		# Copy "LOG-LAST-SYNC-BKP.txt"
+		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		fi
+		
+		# Copy "PATHS.txt"
+		if [ -f "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
+			cp -R "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/"
+		elif [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		fi
+	fi
+	
+	# Change folder permission
+	chown -R root:users "${Script_Dir}/${Script_Name}/"
+	chmod -R 660 "${Script_Dir}/${Script_Name}/"
+}
+# END FUNCTION SYNC SCRIPT ------------------------------------------
+
+# MAIN --------------------------------------------------------------
+# Check if all variables are filled correctly
+if ([ -d "/boot/config/plugins/user.scripts/scripts" ] && [ -d "${Script_Dir}" ] && [ -n "${Script_Name}" ] && [ -n "${#Drive_Name[@]}" ] && 
+([ -n "${Send_Email1}" ] || [ -n "${Send_Email2}" ] || [ -n "${Send_Email_TI}" ]) && 
+([ -n "${Day_Sync}" ] && ([ "${Day_Sync}" -ge "0" ] && [ "${Day_Sync}" -le "360" ])) && 
+([ -n "${St_On_Off}" ] && ([ "${St_On_Off}" -eq "0" ] || [ "${St_On_Off}" -eq "1" ])) ); then
+	if [ "${St_On_Off}" -eq "1" ]; then
+		i=0
+		while [ $i -lt "${#Drive_Name[@]}" ]
+		do
+			Func-Create-Script
+			Func-Sync-Script
+			Func-Log
+			
+			Func-Mount
+			Func-Incr-Sync
+			Func-Rsync
+			Func-Sync-Script
+			Func-Unmount
+			let i++
+		done
+	fi
+else
+	/usr/local/emhttp/webGui/scripts/notify -s "${Msg_Device}" -m "${Msg_Error}" -t
+fi
+# END MAIN ----------------------------------------------------------
