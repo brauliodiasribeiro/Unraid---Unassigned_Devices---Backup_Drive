@@ -19,6 +19,8 @@
 	Example: sync backup every 30 days from the last backup.
 			
 # INSTRUCTIONS
+	- Connect the drive using rclone.
+
 	- Create a script in "CA User Scripts / Script_Name"
 	  (Unraid -> Settings -> User Scripts -> Script_Name").
 
