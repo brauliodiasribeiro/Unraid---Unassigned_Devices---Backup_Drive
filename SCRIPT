@@ -241,6 +241,7 @@ if ([ -d "/boot/config/plugins/user.scripts/scripts" ] && [ -d "${Script_Dir}" ]
 		i=0
 		while [ $i -lt "${#Drive_Name[@]}" ]
 		do
+			Func-Unmount
 			Func-Create-Script
 			Func-Sync-Script
 			Func-Log
