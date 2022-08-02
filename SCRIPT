@@ -103,6 +103,7 @@ Func-Mount() {
 	# Check if directory exists and is empty
 	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
 		rclone mount --max-read-ahead 1024k --allow-other "${Drive_Name[$i]}": "${Drive_Mount}/${Drive_Name[$i]}" &
+		sleep 10
 	fi
 }
 # END FUNCTION MOUNT ------------------------------------------------
@@ -110,6 +111,7 @@ Func-Mount() {
 # FUNCTION UNMOUNT --------------------------------------------------
 Func-Unmount() {
 	fusermount -uz "${Drive_Mount}/${Drive_Name[$i]}"
+	sleep 10
 	
 	# Check if directory exists and is empty
 	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
