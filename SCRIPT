@@ -11,31 +11,41 @@ arrayStarted=true
 St_On_Off=1
  		# TURN THE SCRIPT ON OR OFF. 0 disable backup, 1 enable backup. If set "0" nothing will be modified (copied or deleted)!
 
-Script_Name="bkp_drive"
+Day_Sync=0
+		# Incremental backup: the frequency is scheduled in "CA User Scripts -> Schedule Disabled"
+ 		# Sync backup: 0 disable, x enable. "Day_Sync" is how often the script will sync (mirroring) backup
+
+#Script_Name="bkp_drive_to_folder"
+Script_Name="bkp_folder_to_drive"
+#Script_Name="bkp_drive_to_drive"
  		# Script name. Created in "CA user scripts" (Unraid -> Settings -> User Scripts -> "Script_Name"). A copy will be made in the folder "Script_Dir" (Script_Dir/Script_Name). Type between "" without / begin and end
 
 Script_Dir="/mnt/user/Scripts"
 		# Path to backup scripts. Type between "" without / begin and end
 
-Day_Sync=0
-		# Incremental backup: the frequency is scheduled in "CA User Scripts -> Schedule Disabled"
- 		# Sync backup: 0 disable, x enable. "Day_Sync" is how often the script will sync (mirroring) backup
+Script_Type=2
+		#1 = drive to folder
+		#2 = folder to drive
+		#3 = drive to drive
 
 Send_Email1="test1@gmail.com"
-#Send_Email2="test1@gmail.com"
+#Send_Email2="test2@gmail.com"
 #Send_Email_TI="test3@gmail.com"
 
-Drive_Name=(
+Local_Dir="/mnt/user/Drive01"	#use with 1 = drive to folder or 2 = folder to drive
+#Local_Dir="gdrive-drive01"	#use with 3 = drive to drive. This's drive name that will be copied (which will send the files)
+
+Drive_Mount=(
 	"gdrive-drive01"
 	"gdrive-drive02"
 	"gdrive-drive03"
 )
-    # Drive name: ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02], [gdrive-drive03]
+  		# Drive name: ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02], [gdrive-drive03]
 # END CHANGE THIS VARIABLES -----------------------------------------
 
 # TRANSLATE THIS VARIABLES TO YOUR LANGUAGE -------------------------
 # Translate to your preferred language (English, Portuguese, German, Russian, Italian, Spanish, etc)
-Msg_Mail_Subject="Backup: ${Drive_Name[$i]}"
+Msg_Mail_Subject="Backup: ${Drive_Mount[$i]}"
 Msg_Device="Drive"
 Msg_Date="Date"
 
@@ -52,18 +62,18 @@ Msg_Alert1="Contact the TI team"
 
 # INCREMENTAL AND SYNC BACKUP ---------------------------------------
 Func-Incr-Sync() {
-	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
-	echo "${Msg_Bkp_Start}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
+	echo "${Msg_Bkp_Start}" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 	Func-Send-Email
 	Func-Log
 	
 	# Read the file with the date of the last backup in the YYYY-MM-DD format
-	Log_Last_Sync_Bkp=$(sed '$q' "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt")
+	Log_Last_Sync_Bkp=$(sed '$q' "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt")
 	
 	# Test if the file exists or is empty
-	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" ] || [ -z "${Log_Last_Sync_Bkp}" ]; then
+	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt" ] || [ -z "${Log_Last_Sync_Bkp}" ]; then
 		# Save the date of the last backup (today) in the YYYY-MM-DD format
-		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt"
+		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt"
 	fi
 	
 	if [ -n "${Day_Sync}" ] && [ "${Day_Sync}" -ne 0 ]; then
@@ -83,16 +93,30 @@ Func-Rsync() {
 	Rsync_Config=("-avih" "--stats")
 	
 	if [ -n "${St_Sync_Bkp}" ] && [ "${St_Sync_Bkp}" -eq "1" ]; then
-		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt"
-		echo "${Msg_Bkp_Type_Sync}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+		echo "${Today_Date}" > "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt"
+		echo "${Msg_Bkp_Type_Sync}" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 		Rsync_Config+=("--delete")
 	else
-		echo "${Msg_Bkp_Type_Incr}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+		echo "${Msg_Bkp_Type_Incr}" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 	fi
 	
-	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
-	echo "${Msg_Bkp_Finish_On}" >> "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
-	Rsync_Config+=("--include-from=${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "--exclude=*" "/mnt/user/" "${Drive_Mount}/${Drive_Name[$i]}")
+	echo "" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
+	echo "${Msg_Bkp_Finish}" >> "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
+	
+	if [ -n "${Script_Type}" ] && [ "${Script_Type}" -eq "1" ]; then
+		Rsync_Config+=("--include-from=${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" "--exclude=*" "${Src_Drive}/${Drive_Mount[$i]}/" "${Local_Dir}/")
+
+		# Change folder permission
+		chown -R root:users "${Local_Dir}/"
+		chmod -R 660 "${Local_Dir}/"
+	elif [ -n "${Script_Type}" ] && [ "${Script_Type}" -eq "2" ]; then
+		Rsync_Config+=("--include-from=${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" "--exclude=*" "${Local_Dir}/" "${Src_Drive}/${Drive_Mount[$i]}")
+	elif [ -n "${Script_Type}" ] && [ "${Script_Type}" -eq "3" ]; then
+		if [ "${Local_Dir}" -ne "${Drive_Mount[$i]}" ]; then
+			Rsync_Config+=("--include-from=${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" "--exclude=*" "${Src_Drive}/${Local_Dir}/" "${Src_Drive}/${Drive_Mount[$i]}")
+		fi
+	fi
+	
 	rsync "${Rsync_Config[@]}"
 }
 # END FUNCTION RSYNC ------------------------------------------------
@@ -101,30 +125,29 @@ Func-Rsync() {
 Func-Mount() {
 	# Check if drive unmounted
 	# Check if directory exists and is empty
-	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
-		rclone mount --max-read-ahead 1024k --allow-other "${Drive_Name[$i]}": "${Drive_Mount}/${Drive_Name[$i]}" &
-		sleep 10
+	if ([ -d "${Src_Drive}/${Drive_Mount[$i]}" ] && [ ! "$(ls -A "${Src_Drive}/${Drive_Mount[$i]}")" ]); then
+		rclone mount --max-read-ahead 1024k --allow-other "${Drive_Mount[$i]}": "${Src_Drive}/${Drive_Mount[$i]}" &
 	fi
 }
 # END FUNCTION MOUNT ------------------------------------------------
 
 # FUNCTION UNMOUNT --------------------------------------------------
 Func-Unmount() {
-	fusermount -uz "${Drive_Mount}/${Drive_Name[$i]}"
-	sleep 10
+	# Check if directory exists and is empty
+	fusermount -uz "${Src_Drive}/${Drive_Mount[$i]}"
 	
 	# Check if directory exists and is empty
-	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ ! "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
-		rm -R "${Drive_Mount}/${Drive_Name[$i]}"
+	if ([ -d "${Src_Drive}/${Drive_Mount[$i]}" ] && [ ! "$(ls -A "${Src_Drive}/${Drive_Mount[$i]}")" ]); then
+		rm -R "${Src_Drive}/${Drive_Mount[$i]}"
 	fi
 	
 	# Check if directory exists and is empty
-	if ([ -d "${Drive_Mount}" ] && [ ! "$(ls -A "${Drive_Mount}")" ]); then
-		rm -R "${Drive_Mount}"
+	if ([ -d "${Src_Drive}" ] && [ ! "$(ls -A "${Src_Drive}")" ]); then
+		rm -R "${Src_Drive}"
 	fi
 	
 	# Check if drive mounted (directory exists and isn´t empty)
-	if ([ -d "${Drive_Mount}/${Drive_Name[$i]}" ] && [ "$(ls -A "${Drive_Mount}/${Drive_Name[$i]}")" ]); then
+	if ([ -d "${Src_Drive}/${Drive_Mount[$i]}" ] && [ "$(ls -A "${Src_Drive}/${Drive_Mount[$i]}")" ]); then
 		Func-Error "${Msg_Unmount}" "${Msg_Alert1}"
 	fi
 	
@@ -135,22 +158,22 @@ Func-Unmount() {
 # FUNCTION SEND EMAIL ----------------------------------------------
 Func-Send-Email() {
 	if [ -n "${Send_Email1}" ]; then
-		sendmail "${Send_Email1}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+		sendmail "${Send_Email1}" < "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 	fi
 	
 	if [ -n "${Send_Email2}" ]; then
-		sendmail "${Send_Email2}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+		sendmail "${Send_Email2}" < "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 	fi
 	
-	if [ -n "${Send_Email_TI}" ]; then
-		sendmail "${Send_Email_TI}" < "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+	if [ -n "${Send_Email_IT}" ]; then
+		sendmail "${Send_Email_IT}" < "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 	fi
 }
 # END FUNCTION SEND EMAIL ------------------------------------------
 
 # FUNCTION ERROR ----------------------------------------------------
 Func-Error() {	
-cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 "${1}"
 "${2}"
 "${3}"
@@ -162,13 +185,13 @@ EOF
 Func-Log() {
 	Today_Date=$(date +%Y-%m-%d)
 	
-cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt"
+cat << EOF > "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt"
 From: "${Send_Email1}"
 To: "${Send_Email1}"
 Cc: "${Send_Email2}"
-Cco: "${Send_Email_TI}"
+Cco: "${Send_Email_IT}"
 Subject: "${Msg_Mail_Subject}"
-"${Msg_Device}" = "${Drive_Name[$i]}"
+"${Msg_Device}" = "${Drive_Mount[$i]}"
 "${Msg_Date}" = "${Today_Date}"
 EOF
 }
@@ -176,54 +199,54 @@ EOF
 
 # FUNCTION CREATE SCRIPT --------------------------------------------
 Func-Create-Script() {
-	Drive_Mount="/mnt/disks/Drive"
+	Src_Drive="/mnt/disks/Drive"
 	Src_Flash="/boot/config/plugins/user.scripts/scripts"
 	
 	if [ ! -d "${Script_Dir}/${Script_Name}" ]; then
 		mkdir "${Script_Dir}/${Script_Name}"
 	fi
 	
-	if [ ! -d "${Drive_Mount}" ]; then
-		mkdir "${Drive_Mount}"
+	if [ ! -d "${Src_Drive}" ]; then
+		mkdir "${Src_Drive}"
 	fi
 	
 	
-	if [ ! -d "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}" ]; then
-		mkdir "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}"
+	if [ ! -d "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}" ]; then
+		mkdir "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}"
 	fi
 	
-	if [ ! -d "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}" ]; then
-		mkdir "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}"
+	if [ ! -d "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}" ]; then
+		mkdir "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}"
 	fi
 	
-	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
-		touch "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt"
+	if [ ! -f "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" ]; then
+		touch "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt"
 	fi
 	
-	if [ ! -d "${Drive_Mount}/${Drive_Name[$i]}" ]; then
-		mkdir "${Drive_Mount}/${Drive_Name[$i]}"
+	if [ ! -d "${Src_Drive}/${Drive_Mount[$i]}" ]; then
+		mkdir "${Src_Drive}/${Drive_Mount[$i]}"
 	fi
 }
 # END FUNCTION CREATE SCRIPT ----------------------------------------
 
 # FUNCTION SYNC SCRIPT ----------------------------------------------
 Func-Sync-Script() {
-	if [ -d "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}" ]; then
+	if [ -d "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}" ]; then
 		# Copy "LOG-BKP.txt"
-		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt" ]; then
-			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}/"
 		fi
 		
 		# Copy "LOG-LAST-SYNC-BKP.txt"
-		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" ]; then
-			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/LOG-LAST-SYNC-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		if [ -f "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/LOG-LAST-SYNC-BKP.txt" "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}/"
 		fi
 		
 		# Copy "PATHS.txt"
-		if [ -f "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
-			cp -R "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/"
-		elif [ -f "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" ]; then
-			cp -R "${Src_Flash}/${Script_Name}/${Drive_Name[$i]}/PATHS.txt" "${Script_Dir}/${Script_Name}/${Drive_Name[$i]}/"
+		if [ -f "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" ]; then
+			cp -R "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/"
+		elif [ -f "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" ]; then
+			cp -R "${Src_Flash}/${Script_Name}/${Drive_Mount[$i]}/PATHS.txt" "${Script_Dir}/${Script_Name}/${Drive_Mount[$i]}/"
 		fi
 	fi
 	
@@ -235,23 +258,37 @@ Func-Sync-Script() {
 
 # MAIN --------------------------------------------------------------
 # Check if all variables are filled correctly
-if ([ -d "/boot/config/plugins/user.scripts/scripts" ] && [ -d "${Script_Dir}" ] && [ -n "${Script_Name}" ] && [ -n "${#Drive_Name[@]}" ] && 
-([ -n "${Send_Email1}" ] || [ -n "${Send_Email2}" ] || [ -n "${Send_Email_TI}" ]) && 
+if ([ -d "/boot/config/plugins/user.scripts/scripts" ] && [ -d "${Script_Dir}" ] && [ -n "${Script_Name}" ] && 
+[ -n "${Local_Dir}" ] && [ -d "${Local_Dir}" ] && [ -n "${#Drive_Mount[@]}" ] && 
+([ -n "${Send_Email1}" ] || [ -n "${Send_Email2}" ] || [ -n "${Send_Email_IT}" ]) && 
+([ -n "${Script_Type}" ] && ([ "${Script_Type}" -eq "1" ] || [ "${Script_Type}" -eq "2" ] || [ "${Script_Type}" -eq "3" ])) && 
 ([ -n "${Day_Sync}" ] && ([ "${Day_Sync}" -ge "0" ] && [ "${Day_Sync}" -le "360" ])) && 
 ([ -n "${St_On_Off}" ] && ([ "${St_On_Off}" -eq "0" ] || [ "${St_On_Off}" -eq "1" ])) ); then
 	if [ "${St_On_Off}" -eq "1" ]; then
 		i=0
-		while [ $i -lt "${#Drive_Name[@]}" ]
+		while [ $i -lt "${#Drive_Mount[@]}" ]
 		do
 			Func-Unmount
+			Func-Mount
+			let i++
+		done
+		
+		i=0
+		while [ $i -lt "${#Drive_Mount[@]}" ]
+		do
 			Func-Create-Script
 			Func-Sync-Script
 			Func-Log
 			
-			Func-Mount
 			Func-Incr-Sync
 			Func-Rsync
 			Func-Sync-Script
+			let i++
+		done
+		
+		i=0
+		while [ $i -lt "${#Drive_Mount[@]}" ]
+		do
 			Func-Unmount
 			let i++
 		done
