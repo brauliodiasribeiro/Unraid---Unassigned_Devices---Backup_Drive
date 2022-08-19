@@ -32,15 +32,23 @@ Send_Email1="test1@gmail.com"
 #Send_Email2="test2@gmail.com"
 #Send_Email_TI="test3@gmail.com"
 
-Local_Dir="/mnt/user/Drive01"	#use with 1 = drive to folder or 2 = folder to drive
-#Local_Dir="gdrive-drive01"	#use with 3 = drive to drive. This's drive name that will be copied (which will send the files)
+Local_Dir="/mnt/user/Drive01"
+		# Use with "1 = drive to folder" or "2 = folder to drive"
+		# If use "1 = drive to folder" this's local folder name of backup (which will receive the files)
+		# If use "2 = folder to drive" this's local folder name that will be copied (which will send the files)
+		# Disable/delete the variable below (Local_Dir="gdrive-drive01")
+		
+#Local_Dir="gdrive-drive01"
+		# Use with "3 = drive to drive"
+		# This's drive name that will be copied (which will send the files)
+		# It's the same as ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02], [gdrive-drive03]
+		# Disable/delete the variable above (Local_Dir="/mnt/user/Drive01")
 
 Drive_Mount=(
 	"gdrive-drive01"
 	"gdrive-drive02"
-	"gdrive-drive03"
 )
-  		# Drive name: ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02], [gdrive-drive03]
+  		# It's the same as ".rclone.config" without brackets. Example: [gdrive-drive01], [gdrive-drive02]
 # END CHANGE THIS VARIABLES -----------------------------------------
 
 # TRANSLATE THIS VARIABLES TO YOUR LANGUAGE -------------------------
